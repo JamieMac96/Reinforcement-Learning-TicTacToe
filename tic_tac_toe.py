@@ -8,8 +8,19 @@ class ArtificialPlayer:
         self.eps = eps
         self.alpha = alpha
         self.symbol = sym
+        self.state_history = []
+        self.values = []
 
     def take_action(self, game_board):
+        pass
+
+    def update_state_history(self):
+        pass
+
+    def reset_state_history(self):
+        self.state_history = []
+
+    def initialize_state_values(self):
         pass
 
 
@@ -18,11 +29,13 @@ class Human:
         self.symbol = symbol
 
     def take_action(self, board):
-        move = input("Enter your move (i,j): ")
+        move = input("Player " + str(self.symbol)
+                     + ". Enter your move (i,j): ")
 
         coordinates = [int(res) for res in move.split(",")]
 
-        print(coordinates)
+        if not board.is_clear(coordinates[0], coordinates[1]):
+            self.take_action(board)
 
         board.add_move(self.symbol, coordinates)
 
@@ -32,6 +45,7 @@ class Board:
         self.squares = np.zeros((BOARD_LENGTH, BOARD_LENGTH))
         self.x = 1
         self.o = -1
+        self.num_states = 3**(BOARD_LENGTH*BOARD_LENGTH)
 
     def print(self):
         output_items = np.empty([BOARD_LENGTH, BOARD_LENGTH], dtype='str')
@@ -45,6 +59,30 @@ class Board:
                     output_items[i][j] = 'O'
 
         print_items(output_items)
+
+    def get_winner(self):
+        linear_values = []
+
+        # Process rows and columns
+        linear_values.extend([sum(row) for row in self.squares])
+        linear_values.extend([sum(column) for column in zip(*self.squares)])
+
+        # Process diagonals
+        n = BOARD_LENGTH  # For shorter line length
+        diagonals = [sum(self.squares[i][i] for i in range(n)),
+                     sum(self.squares[i][n - i - 1] for i in range(n))]
+
+        linear_values.extend(diagonals)
+
+        print(linear_values)
+
+        for line_sum in linear_values:
+            if line_sum == (BOARD_LENGTH * self.x):
+                return self.x
+            if line_sum == (BOARD_LENGTH * self.o):
+                return self.o
+
+        return None
 
     def add_move(self, symbol, location):
         if symbol not in (self.x, self.o):
@@ -76,12 +114,14 @@ def print_items(items):
 
 
 def play_game(player1, player2, board):
+    winner = None
+
     current_player = player1
     print("Starting new game")
 
     board.print()
 
-    while True:
+    while winner is None:
         if current_player == player1:
             player1.take_action(board)
             current_player = player2
@@ -89,12 +129,15 @@ def play_game(player1, player2, board):
             player2.take_action(board)
             current_player = player1
         board.print()
+        winner = board.get_winner()
+
+    print("player " + str(winner) + " won the game!")
 
 
 if __name__ == "__main__":
     p1 = Human(1)
     p2 = Human(-1)
 
-    board = Board()
+    brd = Board()
 
-    play_game(p1, p2, board)
+    play_game(p1, p2, brd)
