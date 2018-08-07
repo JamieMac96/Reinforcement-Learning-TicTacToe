@@ -8,48 +8,69 @@ class AiPlayer:
     # epsilon is the probability of choosing a random action instead of
     # choosing the best option available
     # alpha is the learning rate of the AI
-    def __init__(self, sym, epsilon=.1, alpha=.5):
+    def __init__(self, sym, epsilon=.1, alpha=.5, verbose=False):
         self.epsilon = epsilon
         self.alpha = alpha
+        self.verbose = verbose
         self.symbol = sym
         self.state_history = []
 
         # Dictionary that maps from state number to state value
         self.state_values = {}
 
-    def take_action(self, game_board):
+    def set_verbose(self, verbose):
+        self.verbose = verbose
+
+    def take_action(self, board):
         r = np.random.rand()
         possible_moves = []
 
         if r < self.epsilon:
-            print("Taking random action")
+            if self.verbose:
+                print("Taking random action")
             for i in range(BOARD_LENGTH):
                 for j in range(BOARD_LENGTH):
-                    if game_board.is_clear(i, j):
+                    if board.is_clear(i, j):
                         possible_moves.append((i, j))
 
-            move_index = np.random.randint(len(possible_moves))
+            move_index = np.random.randint(0, len(possible_moves))
             next_move = possible_moves[move_index]
         else:
-            print("Taking best action")
+            if self.verbose:
+                print("Taking best action")
             best_move_value = 0.0
             best_move = None
+            move_values = np.empty([BOARD_LENGTH, BOARD_LENGTH])
             for i in range(BOARD_LENGTH):
                 for j in range(BOARD_LENGTH):
-                    if game_board.is_clear(i, j):
-                        game_board.squares[i][j] = self.symbol
-                        state = game_board.get_state()
-                        if self.state_values[state] > best_move_value:
+                    if board.is_clear(i, j):
+                        board.squares[i][j] = self.symbol
+                        state = board.get_state()
+                        move_values[i] = self.state_values[state]
+                        if self.state_values[state] >= best_move_value:
                             best_move = (i, j)
-                        game_board.squares[i][j] = 0
+                            best_move_value = self.state_values[state]
+                        board.squares[i][j] = 0
+                    else:
+                        move_values[i][j] = board.squares[i][j]
             next_move = best_move
-        game_board.add_move(self.symbol, next_move)
+            if self.verbose:
+                print_items(move_values)
+        board.add_move(self.symbol, next_move)
 
     def update_state_history(self, state):
         self.state_history.append(state)
 
-    def update(self):
-        pass
+    def update(self, board):
+        reward = board.reward(self.symbol)
+        target = reward
+        for prev in reversed(self.state_history):
+            value = self.state_values[prev] \
+                  + self.alpha*(target - self.state_values[prev])
+            self.state_values[prev] = value
+            target = value
+
+        self.reset_state_history()
 
     def reset_state_history(self):
         self.state_history = []
@@ -78,6 +99,9 @@ class Human:
 
         board.add_move(self.symbol, coordinates)
 
+    def update_state_history(self, state):
+        pass
+
 
 class Board:
     def __init__(self):
@@ -100,6 +124,7 @@ class Board:
         print_items(output_items)
 
     def get_winner(self):
+
         linear_values = []
 
         # Process rows and columns
@@ -119,11 +144,15 @@ class Board:
             if line_sum == (BOARD_LENGTH * self.o):
                 return self.o
 
+        # 0 indicates a draw
+        if self.is_full():
+            return 0
+
         return None
 
     def add_move(self, symbol, location):
         if symbol not in (self.x, self.o):
-            raise ValueError("Invalid symbol used")
+            raise ValueError("Invalid symbol used: " + str(symbol))
 
         i, j = location
 
@@ -132,6 +161,18 @@ class Board:
 
     def is_clear(self, i, j):
         return self.squares[i][j] == 0
+
+    def reset(self):
+        self.squares = np.zeros((BOARD_LENGTH, BOARD_LENGTH))
+
+    def is_full(self):
+
+        for row in self.squares:
+            for item in row:
+                if item == 0:
+                    return False
+
+        return True
 
     def clear_board(self):
         self.squares = np.zeros((BOARD_LENGTH, BOARD_LENGTH))
@@ -200,6 +241,14 @@ class Board:
         else:
             return 0
 
+    def reward(self, symbol):
+        winner = self.get_winner()
+
+        if winner != 1:
+            return 0
+        else:
+            return 1
+
 
 # This function prints a list of items in the
 # configuration of a tic-tac-toe board.
@@ -224,32 +273,60 @@ def ternary(n):
     return ''.join(reversed(nums))
 
 
-def play_game(player1, player2, board):
+def play_game(player1, player2, board, verbose=False):
     winner = None
 
     current_player = player1
-    player2.initialize_state_values(board)
-    print("Starting new game")
 
-    board.print()
+    if verbose:
+        print("Starting new game")
+        board.print()
 
     while winner is None:
+        current_player.take_action(board)
         if current_player == player1:
-            player1.take_action(board)
             current_player = player2
         else:
-            player2.take_action(board)
             current_player = player1
-        board.print()
+        if verbose:
+            board.print()
+
+        current_state = board.get_state()
+
+        player1.update_state_history(current_state)
+        player2.update_state_history(current_state)
         winner = board.get_winner()
 
-    print("player " + str(winner) + " won the game!")
+    player1.update(board)
+    player2.update(board)
+    board.reset()
+
+    if verbose:
+        if winner == 0:
+            print("It's a draw!")
+        else:
+            print("player " + str(winner) + " won the game!")
 
 
 if __name__ == "__main__":
-    p1 = Human(1)
+    p1 = AiPlayer(1)
     p2 = AiPlayer(-1)
-
     brd = Board()
 
-    play_game(p1, p2, brd)
+    p1.initialize_state_values(brd)
+    p2.initialize_state_values(brd)
+
+    for g in range(5000):
+        if g % 200 == 0:
+            print(g)
+        play_game(p1, p2, brd)
+
+    keep_playing = input("continue playing? [y/n]: ")
+    p1.set_verbose(True)
+
+    while keep_playing == "y":
+        p2 = Human(-1)
+
+        play_game(p1, p2, brd, verbose=True)
+        keep_playing = input("continue playing? [y/n]: ")
+
