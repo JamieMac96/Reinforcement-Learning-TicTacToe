@@ -1,6 +1,14 @@
 import numpy as np
 
 BOARD_LENGTH = 3
+VAL_SYM = {
+    1: "X",
+    -1: "O"
+}
+SYM_VAL = {
+    "X": 1,
+    "O": -1
+}
 
 
 class AiPlayer:
@@ -36,26 +44,13 @@ class AiPlayer:
             move_index = np.random.randint(0, len(possible_moves))
             next_move = possible_moves[move_index]
         else:
-            if self.verbose:
-                print("Taking best action")
-            best_move_value = 0.0
-            best_move = None
-            move_values = np.empty([BOARD_LENGTH, BOARD_LENGTH])
-            for i in range(BOARD_LENGTH):
-                for j in range(BOARD_LENGTH):
-                    if board.is_clear(i, j):
-                        board.squares[i][j] = self.symbol
-                        state = board.get_state()
-                        move_values[i] = self.state_values[state]
-                        if self.state_values[state] >= best_move_value:
-                            best_move = (i, j)
-                            best_move_value = self.state_values[state]
-                        board.squares[i][j] = 0
-                    else:
-                        move_values[i][j] = board.squares[i][j]
+            move_values, best_move = self.get_move_values_and_best_move(board)
+
             next_move = best_move
             if self.verbose:
+                print("Taking best action")
                 print_items(move_values)
+
         board.add_move(self.symbol, next_move)
 
     def update_state_history(self, state):
@@ -83,6 +78,29 @@ class AiPlayer:
 
         board.set_state(0)
 
+    def get_move_values_and_best_move(self, board):
+        best_move_value = -1
+        best_move = None
+        move_values = []
+        states = []
+
+        for i in range(BOARD_LENGTH):
+            move_values.append([])
+            for j in range(BOARD_LENGTH):
+                if board.is_clear(i, j):
+                    board.add_move(self.symbol, (i, j))
+                    state = board.get_state()
+                    states.append(state)
+                    move_values[i].append("{:.2f}".format(self.state_values[state]))
+                    if self.state_values[state] >= best_move_value:
+                        best_move = (i, j)
+                        best_move_value = self.state_values[state]
+                    board.squares[i][j] = 0
+                else:
+                    move_values[i].append(VAL_SYM[board.squares[i][j]])
+
+        return move_values, best_move
+
 
 class Human:
     def __init__(self, symbol):
@@ -100,6 +118,9 @@ class Human:
         board.add_move(self.symbol, coordinates)
 
     def update_state_history(self, state):
+        pass
+
+    def update(self, board):
         pass
 
 
@@ -192,7 +213,7 @@ class Board:
     # which the AI will modify over time in order to get
     # better at the game
     def get_state(self):
-        square_number = 0 # Current position on the board (0-8)
+        square_number = 0  # Current position on the board (0-8)
         state_number = 0
 
         for i in range(BOARD_LENGTH):
@@ -203,6 +224,7 @@ class Board:
                 elif self.squares[i][j] == -1:
                     square_value = 1
                 state_number += (3**square_number)*square_value
+                square_number += 1
         return state_number
 
     # This method will set the board configuration to
@@ -255,12 +277,12 @@ class Board:
 # The items passed should be in the format of a
 # 3x3 2d string array
 def print_items(items):
-    print("-----------")
+    print("----------------")
     for i in range(BOARD_LENGTH):
         print(" ", end='')
         for j in range(BOARD_LENGTH):
-            print("{:<4}".format(items[i][j]), end='')
-        print("\n-----------")
+            print("{:<5}".format(items[i][j]), end='')
+        print("\n----------------")
 
 
 def ternary(n):
@@ -280,7 +302,6 @@ def play_game(player1, player2, board, verbose=False):
 
     if verbose:
         print("Starting new game")
-        board.print()
 
     while winner is None:
         current_player.take_action(board)
@@ -305,7 +326,7 @@ def play_game(player1, player2, board, verbose=False):
         if winner == 0:
             print("It's a draw!")
         else:
-            print("player " + str(winner) + " won the game!")
+            print("player " + VAL_SYM[winner] + " won the game!")
 
 
 if __name__ == "__main__":
@@ -316,13 +337,13 @@ if __name__ == "__main__":
     p1.initialize_state_values(brd)
     p2.initialize_state_values(brd)
 
-    for g in range(5000):
+    for g in range(50000):
         if g % 200 == 0:
             print(g)
         play_game(p1, p2, brd)
 
-    keep_playing = input("continue playing? [y/n]: ")
     p1.set_verbose(True)
+    keep_playing = input("continue playing? [y/n]: ")
 
     while keep_playing == "y":
         p2 = Human(-1)
