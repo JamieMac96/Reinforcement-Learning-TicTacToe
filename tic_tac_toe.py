@@ -16,46 +16,37 @@ class AiPlayer:
     # epsilon is the probability of choosing a random action instead of
     # choosing the best option available
     # alpha is the learning rate of the AI
-    def __init__(self, sym, epsilon=.1, alpha=.5, verbose=False):
+    def __init__(self, sym, epsilon=.1, alpha=.05, verbose=False):
         self.epsilon = epsilon
         self.alpha = alpha
         self.verbose = verbose
         self.symbol = sym
         self.state_history = []
-
-        # Dictionary that maps from state number to state value
-        self.state_values = {}
+        self.state_values = {}  # Maps from state number to state value
 
     def set_verbose(self, verbose):
         self.verbose = verbose
 
     def take_action(self, board):
         r = np.random.rand()
-        possible_moves = []
 
         if r < self.epsilon:
-            if self.verbose:
-                print("Taking random action")
-            for i in range(BOARD_LENGTH):
-                for j in range(BOARD_LENGTH):
-                    if board.is_clear(i, j):
-                        possible_moves.append((i, j))
-
-            move_index = np.random.randint(0, len(possible_moves))
-            next_move = possible_moves[move_index]
+            next_move = self.choose_random_action(board)
         else:
-            move_values, best_move = self.get_move_values_and_best_move(board)
-
-            next_move = best_move
-            if self.verbose:
-                print("Taking best action")
-                print_items(move_values)
+            next_move = self.choose_best_action(board)
 
         board.add_move(self.symbol, next_move)
 
+    # Add a new state to the list of states that we have
+    # visited so far this game
     def update_state_history(self, state):
         self.state_history.append(state)
 
+    # In this method we update the values associated with the states
+    # that we have visited during the game (that just ended).
+    # The change in value will depend on whether we won or lost the
+    # game. If we won the game, the values associated with the states
+    # that led to us winning the game will be increased.
     def update(self, board):
         reward = board.reward(self.symbol)
         target = reward
@@ -65,11 +56,16 @@ class AiPlayer:
             self.state_values[prev] = value
             target = value
 
-        self.reset_state_history()
-
+    # Since the scope of a the state history is only
+    # one game then at the end of each game we must reset
+    # the state history
     def reset_state_history(self):
         self.state_history = []
 
+    # For each possible state we assign either:
+    #  - 0 for a losing boards
+    #  - 1 for winning boards
+    #  - .5 for neither winning nor losing boards
     def initialize_state_values(self, board):
 
         for i in range(board.num_states):
@@ -78,11 +74,36 @@ class AiPlayer:
 
         board.set_state(0)
 
-    def get_move_values_and_best_move(self, board):
+    def choose_random_action(self, board):
+        possible_moves = []
+
+        if self.verbose:
+            print("Taking random action")
+        for i in range(BOARD_LENGTH):
+            for j in range(BOARD_LENGTH):
+                if board.is_clear(i, j):
+                    possible_moves.append((i, j))
+
+        move_index = np.random.randint(0, len(possible_moves))
+
+        return possible_moves[move_index]
+
+    def choose_best_action(self, board):
+        move_values, best_action = self.get_action_values_and_best_action(board)
+
+        if self.verbose:
+            print("Taking best action")
+            print_items(move_values)
+
+        return best_action
+
+    # In order to find the best move we must take each
+    # possible action, find the value associated with the state
+    # that this action takes us to and then choose the action
+    def get_action_values_and_best_action(self, board):
         best_move_value = -1
         best_move = None
         move_values = []
-        states = []
 
         for i in range(BOARD_LENGTH):
             move_values.append([])
@@ -90,7 +111,6 @@ class AiPlayer:
                 if board.is_clear(i, j):
                     board.add_move(self.symbol, (i, j))
                     state = board.get_state()
-                    states.append(state)
                     move_values[i].append("{:.2f}".format(self.state_values[state]))
                     if self.state_values[state] >= best_move_value:
                         best_move = (i, j)
@@ -102,6 +122,7 @@ class AiPlayer:
         return move_values, best_move
 
 
+# Allows human to play the game
 class Human:
     def __init__(self, symbol):
         self.symbol = symbol
@@ -123,7 +144,13 @@ class Human:
     def update(self, board):
         pass
 
+    def reset_state_history(self):
+        pass
 
+
+# This class contains the elements of the game relating to the game board.
+# This includes the contents of each space on the board as well as the
+# methods that determine the winner of the game and the current state
 class Board:
     def __init__(self):
         self.squares = np.zeros((BOARD_LENGTH, BOARD_LENGTH))
@@ -186,6 +213,7 @@ class Board:
     def reset(self):
         self.squares = np.zeros((BOARD_LENGTH, BOARD_LENGTH))
 
+    # Check if the board is currently full
     def is_full(self):
 
         for row in self.squares:
@@ -266,7 +294,7 @@ class Board:
     def reward(self, symbol):
         winner = self.get_winner()
 
-        if winner != 1:
+        if winner != symbol:
             return 0
         else:
             return 1
@@ -285,6 +313,7 @@ def print_items(items):
         print("\n----------------")
 
 
+# Converts decimal number to a ternary string
 def ternary(n):
     if n == 0:
         return '0'
@@ -315,7 +344,9 @@ def play_game(player1, player2, board, verbose=False):
         current_state = board.get_state()
 
         player1.update_state_history(current_state)
+        player1.reset_state_history()
         player2.update_state_history(current_state)
+        player2.reset_state_history()
         winner = board.get_winner()
 
     player1.update(board)
@@ -337,15 +368,17 @@ if __name__ == "__main__":
     p1.initialize_state_values(brd)
     p2.initialize_state_values(brd)
 
-    for g in range(50000):
+    # Train the two Ai players
+    for g in range(500000):
         if g % 200 == 0:
             print(g)
         play_game(p1, p2, brd)
 
-    p1.set_verbose(True)
     keep_playing = input("continue playing? [y/n]: ")
 
+    # Play against the AI?
     while keep_playing == "y":
+        p1.set_verbose(True)
         p2 = Human(-1)
 
         play_game(p1, p2, brd, verbose=True)
